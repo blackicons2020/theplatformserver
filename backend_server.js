@@ -42,9 +42,17 @@ const initDb = async () => {
         content TEXT,
         views INTEGER DEFAULT 0,
         status TEXT CHECK (status IN ('pending', 'published', 'rejected')) DEFAULT 'pending',
-        is_breaking BOOLEAN DEFAULT FALSE
+        is_breaking BOOLEAN DEFAULT FALSE,
+        sub_headline TEXT
       );
     `);
+
+    // MIGRATION: Add sub_headline column if it doesn't exist (for existing databases)
+    try {
+        await pool.query("ALTER TABLE articles ADD COLUMN IF NOT EXISTS sub_headline TEXT");
+    } catch (e) {
+        // Ignore error if column exists
+    }
 
     // 2. Ads Table
     await pool.query(`
@@ -103,14 +111,19 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
-// 2. Submit New Article
+// 2. Submit New Article (Updates status logic)
 app.post('/api/articles', async (req, res) => {
-  const { title, category, author, image, excerpt, content } = req.body;
+  // We now accept 'status' and 'subHeadline' from the body
+  const { title, subHeadline, category, author, image, excerpt, content, status } = req.body;
+  
+  // Default status is 'pending' unless explicitly set (e.g., by admin)
+  const finalStatus = status || 'pending';
+
   try {
     const result = await pool.query(
-      `INSERT INTO articles (title, category, author, image, excerpt, content) 
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [title, category, author || 'Citizen Reporter', image, excerpt, content]
+      `INSERT INTO articles (title, sub_headline, category, author, image, excerpt, content, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [title, subHeadline || '', category, author || 'Citizen Reporter', image, excerpt, content, finalStatus]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -149,16 +162,16 @@ app.patch('/api/admin/articles/:id/approve', async (req, res) => {
   }
 });
 
-// 5. Admin: Update Article (NEW)
+// 5. Admin: Update Article (Includes sub_headline)
 app.put('/api/articles/:id', async (req, res) => {
   const { id } = req.params;
-  const { title, category, image, content, isBreaking } = req.body;
+  const { title, subHeadline, category, author, image, content, isBreaking } = req.body;
   try {
     const result = await pool.query(
       `UPDATE articles 
-       SET title = $1, category = $2, image = $3, content = $4, is_breaking = $5
-       WHERE id = $6 RETURNING *`,
-      [title, category, image, content, isBreaking, id]
+       SET title = $1, sub_headline = $2, category = $3, author = $4, image = $5, content = $6, is_breaking = $7
+       WHERE id = $8 RETURNING *`,
+      [title, subHeadline, category, author, image, content, isBreaking, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: 'Article not found' });
     res.json(result.rows[0]);
@@ -167,7 +180,7 @@ app.put('/api/articles/:id', async (req, res) => {
   }
 });
 
-// 6. Admin: Delete Article (NEW)
+// 6. Admin: Delete Article
 app.delete('/api/articles/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -197,7 +210,7 @@ app.post('/api/ads', async (req, res) => {
 app.get('/api/ads/active', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM ads WHERE status = 'active'");
-    // Map DB columns (snake_case) to JSON keys (camelCase)
+    // Map DB columns to Frontend
     const mappedAds = result.rows.map(ad => ({
       id: ad.id,
       clientName: ad.client_name,
@@ -229,19 +242,14 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ message: 'Ad not found' });
     
     const ad = result.rows[0];
+    // Simple map for immediate return
     const mappedAd = {
       id: ad.id,
       clientName: ad.client_name,
-      email: ad.email,
       plan: ad.plan,
-      amount: ad.amount,
       status: ad.status,
-      dateSubmitted: ad.date_submitted,
-      receiptImage: ad.receipt_image,
       adImage: ad.ad_image,
-      adContent: ad.ad_content,
-      adUrl: ad.ad_url,
-      adHeadline: ad.ad_headline
+      receiptImage: ad.receipt_image
     };
     res.json(mappedAd);
   } catch (err) {
@@ -263,7 +271,7 @@ app.post('/api/comments', async (req, res) => {
   }
 });
 
-// 11. Get Comments for Article
+// 11. Get Comments
 app.get('/api/articles/:id/comments', async (req, res) => {
   const { id } = req.params;
   try {
