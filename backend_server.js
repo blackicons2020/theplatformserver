@@ -84,7 +84,7 @@ const initDb = async () => {
 
 initDb();
 
-// --- ROOT ROUTE (The Welcome Page) ---
+// --- ROOT ROUTE ---
 app.get('/', (req, res) => {
   res.send('The Platform API is running successfully! 🚀');
 });
@@ -103,7 +103,7 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
-// 2. Submit New Article (Citizen Journalism)
+// 2. Submit New Article
 app.post('/api/articles', async (req, res) => {
   const { title, category, author, image, excerpt, content } = req.body;
   try {
@@ -149,7 +149,36 @@ app.patch('/api/admin/articles/:id/approve', async (req, res) => {
   }
 });
 
-// 5. Submit Advertisement
+// 5. Admin: Update Article (NEW)
+app.put('/api/articles/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title, category, image, content, isBreaking } = req.body;
+  try {
+    const result = await pool.query(
+      `UPDATE articles 
+       SET title = $1, category = $2, image = $3, content = $4, is_breaking = $5
+       WHERE id = $6 RETURNING *`,
+      [title, category, image, content, isBreaking, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ message: 'Article not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 6. Admin: Delete Article (NEW)
+app.delete('/api/articles/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query("DELETE FROM articles WHERE id = $1", [id]);
+    res.json({ message: "Article deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 7. Submit Advertisement
 app.post('/api/ads', async (req, res) => {
   const { clientName, email, plan, amount, receiptImage, adImage, adContent, adUrl, adHeadline } = req.body;
   try {
@@ -164,7 +193,7 @@ app.post('/api/ads', async (req, res) => {
   }
 });
 
-// 6. Get Active Ads
+// 8. Get Active Ads
 app.get('/api/ads/active', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM ads WHERE status = 'active'");
@@ -189,7 +218,7 @@ app.get('/api/ads/active', async (req, res) => {
   }
 });
 
-// 7. Admin: Approve Ad
+// 9. Admin: Approve Ad
 app.patch('/api/admin/ads/:id/approve', async (req, res) => {
   const { id } = req.params;
   try {
@@ -199,7 +228,6 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
     );
     if (result.rows.length === 0) return res.status(404).json({ message: 'Ad not found' });
     
-    // Return mapped version immediately so UI updates cleanly
     const ad = result.rows[0];
     const mappedAd = {
       id: ad.id,
@@ -221,7 +249,7 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
   }
 });
 
-// 8. Post Comment
+// 10. Post Comment
 app.post('/api/comments', async (req, res) => {
   const { articleId, author, email, content } = req.body;
   try {
@@ -235,7 +263,7 @@ app.post('/api/comments', async (req, res) => {
   }
 });
 
-// 9. Get Comments for Article
+// 11. Get Comments for Article
 app.get('/api/articles/:id/comments', async (req, res) => {
   const { id } = req.params;
   try {
