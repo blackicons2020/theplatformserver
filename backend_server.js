@@ -1,5 +1,5 @@
 /**
- * The People's Platform - Backend Server Code
+ * The Platform - Backend Server Code
  * database: Supabase (PostgreSQL)
  * host: Render
  */
@@ -77,24 +77,14 @@ const initDb = async () => {
       );
     `);
 
-    console.log("PostgreSQL Tables initialized.");
-  } catch (err) {
-    console.error("Error creating tables:", err);
-  }
-};
-
-    // --- MIGRATIONS (Fixes for existing data) ---
-    
-    // Fix 1: Add sub_headline if missing
+    // Ensure sub_headline exists (Migration check)
     try {
         await pool.query("ALTER TABLE articles ADD COLUMN IF NOT EXISTS sub_headline TEXT");
-    } catch (e) { /* ignore */ }
+    } catch (e) { 
+        // Column likely exists, ignore error
+    }
 
-    // Fix 2: MARK OLD NEWS AS PUBLISHED (This fixes the missing news issue)
-    // This forces any article without a status to be 'published' so it shows on the homepage
-    await pool.query("UPDATE articles SET status = 'published' WHERE status IS NULL");
-
-    console.log("PostgreSQL Tables initialized and Legacy Data Fixed.");
+    console.log("PostgreSQL Tables initialized.");
   } catch (err) {
     console.error("Error creating tables:", err);
   }
@@ -112,7 +102,6 @@ app.get('/', (req, res) => {
 // 1. Get All Published Articles (Newest First)
 app.get('/api/articles', async (req, res) => {
   try {
-    // We now explicitly check for 'published' OR null (double safety)
     const result = await pool.query(
       "SELECT * FROM articles WHERE status = 'published' OR status IS NULL ORDER BY date DESC"
     );
