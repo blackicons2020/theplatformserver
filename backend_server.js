@@ -16,7 +16,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors()); // Allow Frontend to connect
-app.use(express.json({ limit: '50mb' })); // Increase limit for large images
+app.use(express.json({ limit: '50mb' })); // Increase limit for large images/files
 
 // PostgreSQL Connection Pool (Supabase)
 const pool = new Pool({
@@ -61,7 +61,8 @@ const initDb = async () => {
         ad_image TEXT,
         ad_content TEXT,
         ad_url TEXT,
-        ad_headline TEXT
+        ad_headline TEXT,
+        ad_content_file TEXT
       );
     `);
 
@@ -77,12 +78,24 @@ const initDb = async () => {
       );
     `);
 
-    // Ensure sub_headline exists (Migration check)
+    // 4. Support Messages Table (NEW)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS support_messages (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        subject TEXT,
+        message TEXT NOT NULL,
+        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'unread'
+      );
+    `);
+
+    // Migrations for existing tables
     try {
         await pool.query("ALTER TABLE articles ADD COLUMN IF NOT EXISTS sub_headline TEXT");
-    } catch (e) { 
-        // Column likely exists, ignore error
-    }
+        await pool.query("ALTER TABLE ads ADD COLUMN IF NOT EXISTS ad_content_file TEXT");
+    } catch (e) { /* ignore */ }
 
     console.log("PostgreSQL Tables initialized.");
   } catch (err) {
@@ -99,7 +112,7 @@ app.get('/', (req, res) => {
 
 // --- API ROUTES ---
 
-// 1. Get All Published Articles (Newest First)
+// 1. Get All Published Articles
 app.get('/api/articles', async (req, res) => {
   try {
     const result = await pool.query(
@@ -190,12 +203,12 @@ app.delete('/api/articles/:id', async (req, res) => {
 
 // 7. Submit Advertisement
 app.post('/api/ads', async (req, res) => {
-  const { clientName, email, plan, amount, receiptImage, adImage, adContent, adUrl, adHeadline } = req.body;
+  const { clientName, email, plan, amount, receiptImage, adImage, adContent, adUrl, adHeadline, adContentFile } = req.body;
   try {
     const result = await pool.query(
-      `INSERT INTO ads (client_name, email, plan, amount, receipt_image, ad_image, ad_content, ad_url, ad_headline)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [clientName, email, plan, amount, receiptImage, adImage, adContent, adUrl, adHeadline]
+      `INSERT INTO ads (client_name, email, plan, amount, receipt_image, ad_image, ad_content, ad_url, ad_headline, ad_content_file)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [clientName, email, plan, amount, receiptImage, adImage, adContent, adUrl, adHeadline, adContentFile]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -207,6 +220,7 @@ app.post('/api/ads', async (req, res) => {
 app.get('/api/ads/active', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM ads WHERE status = 'active'");
+    // Map snake_case to camelCase
     const mappedAds = result.rows.map(ad => ({
       id: ad.id,
       clientName: ad.client_name,
@@ -219,7 +233,33 @@ app.get('/api/ads/active', async (req, res) => {
       adImage: ad.ad_image,
       adContent: ad.ad_content,
       adUrl: ad.ad_url,
-      adHeadline: ad.ad_headline
+      adHeadline: ad.ad_headline,
+      adContentFile: ad.ad_content_file
+    }));
+    res.json(mappedAds);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 8b. Get ALL Ads (For Admin Dashboard)
+app.get('/api/admin/ads', async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM ads ORDER BY date_submitted DESC");
+    const mappedAds = result.rows.map(ad => ({
+      id: ad.id,
+      clientName: ad.client_name,
+      email: ad.email,
+      plan: ad.plan,
+      amount: ad.amount,
+      status: ad.status, // Includes 'Pending', 'Active', 'Rejected'
+      dateSubmitted: ad.date_submitted,
+      receiptImage: ad.receipt_image,
+      adImage: ad.ad_image,
+      adContent: ad.ad_content,
+      adUrl: ad.ad_url,
+      adHeadline: ad.ad_headline,
+      adContentFile: ad.ad_content_file
     }));
     res.json(mappedAds);
   } catch (err) {
@@ -236,17 +276,7 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
       [id]
     );
     if (result.rows.length === 0) return res.status(404).json({ message: 'Ad not found' });
-    
-    const ad = result.rows[0];
-    const mappedAd = {
-      id: ad.id,
-      clientName: ad.client_name,
-      plan: ad.plan,
-      status: ad.status,
-      adImage: ad.ad_image,
-      receiptImage: ad.receipt_image
-    };
-    res.json(mappedAd);
+    res.json(result.rows[0]); // Return raw for simplicity or map it
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -283,6 +313,30 @@ app.get('/api/articles/:id/comments', async (req, res) => {
       date: c.date
     }));
     res.json(mappedComments);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 12. Submit Support Message (NEW)
+app.post('/api/support', async (req, res) => {
+  const { name, email, subject, message } = req.body;
+  try {
+    await pool.query(
+      "INSERT INTO support_messages (name, email, subject, message) VALUES ($1, $2, $3, $4)",
+      [name, email, subject, message]
+    );
+    res.status(201).json({ message: "Support message sent" });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// 13. Admin: Get Support Messages (NEW)
+app.get('/api/admin/support', async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM support_messages ORDER BY date DESC");
+    res.json(result.rows);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
