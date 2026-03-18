@@ -18,16 +18,24 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // MongoDB Connection (cached for serverless)
-let isConnected = false;
+mongoose.set('bufferCommands', false);
 async function connectDB() {
-  if (isConnected) return;
-  await mongoose.connect(process.env.MONGODB_URI);
-  isConnected = true;
+  if (mongoose.connection.readyState >= 1) return;
+  if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
+  await mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 8000,
+  });
   console.log('MongoDB connected successfully');
 }
 app.use(async (req, res, next) => {
-  await connectDB();
-  next();
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('DB connection error:', err.message);
+    res.status(500).json({ message: 'Database connection error. Check server environment variables.' });
+  }
 });
 
 // --- Schemas & Models ---
