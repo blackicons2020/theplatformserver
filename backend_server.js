@@ -80,18 +80,19 @@ const articleSchema = new mongoose.Schema({
 const Article = mongoose.model('Article', articleSchema);
 
 const adSchema = new mongoose.Schema({
-  clientName:    { type: String, required: true },
-  email:         { type: String, required: true },
-  plan:          { type: String, required: true },
-  amount:        Number,
-  status:        { type: String, enum: ['pending', 'active', 'rejected'], default: 'pending' },
-  dateSubmitted: { type: Date, default: Date.now },
-  receiptImage:  String,
-  adImage:       String,
-  adContent:     String,
-  adUrl:         String,
-  adHeadline:    String,
-  adContentFile: String
+  clientName:       { type: String, required: true },
+  email:            { type: String, required: true },
+  plan:             { type: String, required: true },
+  amount:           Number,
+  status:           { type: String, enum: ['pending', 'active', 'rejected'], default: 'pending' },
+  dateSubmitted:    { type: Date, default: Date.now },
+  receiptImage:     String,
+  adImage:          String,
+  adContent:        String,
+  adUrl:            String,
+  adHeadline:       String,
+  adContentFile:    String,
+  paymentReference: { type: String, unique: true, sparse: true }
 }, jsonOptions);
 
 const Ad = mongoose.model('Ad', adSchema);
@@ -327,6 +328,45 @@ app.delete('/api/admin/ads/:id', async (req, res) => {
     res.json({ message: 'Ad deleted' });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// --- PAYMENT ROUTES ---
+
+// Verify Paystack transaction and save ad
+app.post('/api/payment/verify-ad', async (req, res) => {
+  const { reference, clientName, email, plan, amount, adImage, adHeadline, adContent, adUrl, adContentFile } = req.body;
+  if (!reference) return res.status(400).json({ message: 'Payment reference required' });
+  try {
+    // Verify with Paystack
+    const paystackRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}` }
+    });
+    const paystackData = await paystackRes.json();
+    if (!paystackData.status || paystackData.data?.status !== 'success') {
+      return res.status(402).json({ message: 'Payment not confirmed. Please contact support.' });
+    }
+    // Check amount matches (Paystack returns amount in kobo)
+    const paidKobo = paystackData.data.amount;
+    const expectedKobo = amount * 100;
+    if (paidKobo < expectedKobo) {
+      return res.status(402).json({ message: `Underpayment detected. Expected ₦${amount.toLocaleString()}.` });
+    }
+    // Check reference not already used
+    const existing = await Ad.findOne({ paymentReference: reference });
+    if (existing) return res.status(409).json({ message: 'This payment reference has already been used.' });
+    // Save ad
+    const ad = new Ad({
+      clientName, email, plan, amount,
+      paymentReference: reference,
+      adImage, adHeadline, adContent, adUrl, adContentFile,
+      status: 'pending'
+    });
+    const saved = await ad.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    console.error('Payment verify error:', err);
+    res.status(500).json({ message: 'Verification failed. Please try again or contact support.' });
   }
 });
 
