@@ -305,11 +305,13 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
 // 9b. Admin: Edit Ad
 app.put('/api/admin/ads/:id', async (req, res) => {
   const { id } = req.params;
-  const { clientName, email, plan, amount, adHeadline, adContent, adUrl, status } = req.body;
+  const { clientName, email, plan, amount, adHeadline, adContent, adUrl, status, adImage } = req.body;
   try {
+    const update = { clientName, email, plan, amount, adHeadline, adContent, adUrl, status };
+    if (adImage) update.adImage = adImage;
     const ad = await Ad.findByIdAndUpdate(
       id,
-      { clientName, email, plan, amount, adHeadline, adContent, adUrl, status },
+      update,
       { new: true, runValidators: true }
     );
     if (!ad) return res.status(404).json({ message: 'Ad not found' });
