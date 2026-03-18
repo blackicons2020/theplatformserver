@@ -8,6 +8,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const sharp = require('sharp');
 
 dotenv.config();
 
@@ -24,9 +25,29 @@ async function connectDB() {
   if (!process.env.MONGODB_URI) throw new Error('MONGODB_URI environment variable is not set');
   await mongoose.connect(process.env.MONGODB_URI, {
     serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 8000,
+    socketTimeoutMS: 15000,
   });
   console.log('MongoDB connected successfully');
+}
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('DB connection error:', err.message);
+    res.status(500).json({ message: 'Database connection error. Check server environment variables.' });
+  }
+});
+
+// Helper: compress a base64 image to a small thumbnail
+async function makeThumb(base64, width = 400) {
+  try {
+    const match = base64.match(/^data:image\/\w+;base64,(.+)$/);
+    if (!match) return '';
+    const buf = Buffer.from(match[1], 'base64');
+    const out = await sharp(buf).resize(width, null, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 55 }).toBuffer();
+    return `data:image/jpeg;base64,${out.toString('base64')}`;
+  } catch { return ''; }
 }
 app.use(async (req, res, next) => {
   try {
@@ -109,7 +130,26 @@ app.get('/api/articles', async (req, res) => {
     const articles = await Article.find({ status: 'published' })
       .select('-content -image')
       .sort({ date: -1 });
+    res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     res.json(articles);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 1a. Batch thumbnails – returns compressed images for a list of article IDs
+app.post('/api/articles/thumbnails', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) return res.json({});
+    const limited = ids.slice(0, 20);
+    const articles = await Article.find({ _id: { $in: limited } }).select('image');
+    const result = {};
+    await Promise.all(articles.map(async (a) => {
+      if (a.image) result[a._id.toString()] = await makeThumb(a.image);
+    }));
+    res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    res.json(result);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -120,18 +160,21 @@ app.get('/api/articles/:id', async (req, res) => {
   try {
     const article = await Article.findById(req.params.id);
     if (!article) return res.status(404).json({ message: 'Article not found' });
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
     res.json(article);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// 1c. Get Article Image Only
+// 1c. Get Article Thumbnail Only
 app.get('/api/articles/:id/image', async (req, res) => {
   try {
     const article = await Article.findById(req.params.id).select('image');
     if (!article) return res.status(404).json({ message: 'Not found' });
-    res.json({ image: article.image || '' });
+    const thumb = article.image ? await makeThumb(article.image) : '';
+    res.set('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+    res.json({ image: thumb });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -227,6 +270,7 @@ app.post('/api/ads', async (req, res) => {
 app.get('/api/ads/active', async (req, res) => {
   try {
     const ads = await Ad.find({ status: 'active' });
+    res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     res.json(ads);
   } catch (err) {
     res.status(500).json({ message: err.message });
