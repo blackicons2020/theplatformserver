@@ -301,6 +301,35 @@ app.patch('/api/admin/ads/:id/approve', async (req, res) => {
   }
 });
 
+// 9b. Admin: Edit Ad
+app.put('/api/admin/ads/:id', async (req, res) => {
+  const { id } = req.params;
+  const { clientName, email, plan, amount, adHeadline, adContent, adUrl, status } = req.body;
+  try {
+    const ad = await Ad.findByIdAndUpdate(
+      id,
+      { clientName, email, plan, amount, adHeadline, adContent, adUrl, status },
+      { new: true, runValidators: true }
+    );
+    if (!ad) return res.status(404).json({ message: 'Ad not found' });
+    res.json(ad);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// 9c. Admin: Delete Ad
+app.delete('/api/admin/ads/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const ad = await Ad.findByIdAndDelete(id);
+    if (!ad) return res.status(404).json({ message: 'Ad not found' });
+    res.json({ message: 'Ad deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- COMMENT ROUTES ---
 
 // 10. Post Comment
