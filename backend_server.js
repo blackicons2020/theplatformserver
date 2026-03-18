@@ -372,6 +372,26 @@ app.post('/api/payment/verify-ad', async (req, res) => {
 
 // --- COMMENT ROUTES ---
 
+// Admin: Post Ad directly (no payment required) — immediately active
+app.post('/api/admin/ads', async (req, res) => {
+  const { clientName, email, plan, amount, adImage, adHeadline, adContent, adUrl, adContentFile } = req.body;
+  try {
+    const ad = new Ad({
+      clientName: clientName || 'Admin',
+      email: email || 'admin@theplatform.ng',
+      plan, amount: amount || 0,
+      adImage, adHeadline, adContent, adUrl, adContentFile,
+      status: 'active'
+    });
+    const saved = await ad.save();
+    res.status(201).json(saved);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// --- COMMENT ROUTES ---
+
 // 10. Post Comment
 app.post('/api/comments', async (req, res) => {
   const { articleId, author, email, content } = req.body;
