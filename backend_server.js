@@ -112,7 +112,9 @@ const supportSchema = new mongoose.Schema({
   subject: String,
   message: { type: String, required: true },
   date:    { type: Date, default: Date.now },
-  status:  { type: String, default: 'unread' }
+  status:  { type: String, default: 'unread' },
+  reply:   { type: String, default: '' },
+  replyDate: Date
 }, jsonOptions);
 
 const SupportMessage = mongoose.model('SupportMessage', supportSchema);
@@ -342,6 +344,35 @@ app.post('/api/support', async (req, res) => {
 app.get('/api/admin/support', async (req, res) => {
   try {
     const messages = await SupportMessage.find().sort({ date: -1 });
+    res.json(messages);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 14. Admin: Reply to support message
+app.patch('/api/admin/support/:id/reply', async (req, res) => {
+  const { id } = req.params;
+  const { reply } = req.body;
+  try {
+    const msg = await SupportMessage.findByIdAndUpdate(
+      id,
+      { reply, replyDate: new Date(), status: 'replied' },
+      { new: true }
+    );
+    if (!msg) return res.status(404).json({ message: 'Message not found' });
+    res.json(msg);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 15. User: Check support replies by email
+app.get('/api/support/replies', async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ message: 'Email required' });
+  try {
+    const messages = await SupportMessage.find({ email, reply: { $ne: '' } }).sort({ replyDate: -1 });
     res.json(messages);
   } catch (err) {
     res.status(500).json({ message: err.message });
