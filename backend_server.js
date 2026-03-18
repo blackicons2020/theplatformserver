@@ -103,11 +103,24 @@ app.get('/', (req, res) => {
 
 // --- ARTICLE ROUTES ---
 
-// 1. Get All Published Articles
+// 1. Get All Published Articles (lightweight – excludes content & image)
 app.get('/api/articles', async (req, res) => {
   try {
-    const articles = await Article.find({ status: 'published' }).sort({ date: -1 });
+    const articles = await Article.find({ status: 'published' })
+      .select('-content -image')
+      .sort({ date: -1 });
     res.json(articles);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 1b. Get Single Article (full detail with image & content)
+app.get('/api/articles/:id', async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id);
+    if (!article) return res.status(404).json({ message: 'Article not found' });
+    res.json(article);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
