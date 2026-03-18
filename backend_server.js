@@ -126,6 +126,17 @@ app.get('/api/articles/:id', async (req, res) => {
   }
 });
 
+// 1c. Get Article Image Only
+app.get('/api/articles/:id/image', async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id).select('image');
+    if (!article) return res.status(404).json({ message: 'Not found' });
+    res.json({ image: article.image || '' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // 2. Submit New Article
 app.post('/api/articles', async (req, res) => {
   const { title, subHeadline, category, author, image, excerpt, content, status } = req.body;
