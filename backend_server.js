@@ -550,5 +550,26 @@ app.get('/api/support/replies', async (req, res) => {
   }
 });
 
+// XML Sitemap
+app.get('/api/sitemap.xml', async (req, res) => {
+  try {
+    const articles = await Article.find({ status: 'published' }).select('_id date').sort({ date: -1 });
+    const siteUrl = 'https://www.thepeoplesplatform.online';
+    const now = new Date().toISOString();
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+    xml += `  <url><loc>${siteUrl}</loc><lastmod>${now}</lastmod><changefreq>hourly</changefreq><priority>1.0</priority></url>\n`;
+    for (const a of articles) {
+      const lastmod = a.date ? new Date(a.date).toISOString() : now;
+      xml += `  <url><loc>${siteUrl}/article/${a._id}</loc><lastmod>${lastmod}</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>\n`;
+    }
+    xml += `</urlset>`;
+    res.set('Content-Type', 'application/xml');
+    res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=600');
+    res.send(xml);
+  } catch (err) {
+    res.status(500).send('Error generating sitemap');
+  }
+});
+
 // Export for Vercel serverless
 module.exports = app;
