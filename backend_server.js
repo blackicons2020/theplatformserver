@@ -131,7 +131,7 @@ app.get('/api/og-default-image', async (req, res) => {
     const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
       <rect width="1200" height="630" fill="#008751"/>
       <text x="600" y="280" font-family="Arial,sans-serif" font-size="72" font-weight="bold" fill="white" text-anchor="middle">The People's Platform</text>
-      <text x="600" y="360" font-family="Arial,sans-serif" font-size="36" fill="#c0f0d0" text-anchor="middle">Empowering voices</text>
+      <text x="600" y="360" font-family="Arial,sans-serif" font-size="36" fill="#c0f0d0" text-anchor="middle">Reinventing news reporting without bias.</text>
       <rect y="590" width="1200" height="40" fill="#006040"/>
     </svg>`;
     const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
