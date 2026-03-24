@@ -125,6 +125,24 @@ app.get('/', (req, res) => {
   res.send('The Platform API is running successfully! 🚀');
 });
 
+// Default OG image for social previews
+app.get('/api/og-default-image', async (req, res) => {
+  try {
+    const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="630" fill="#008751"/>
+      <text x="600" y="280" font-family="Arial,sans-serif" font-size="72" font-weight="bold" fill="white" text-anchor="middle">The People's Platform</text>
+      <text x="600" y="360" font-family="Arial,sans-serif" font-size="36" fill="#c0f0d0" text-anchor="middle">Empowering voices</text>
+      <rect y="590" width="1200" height="40" fill="#006040"/>
+    </svg>`;
+    const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, s-maxage=604800');
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).send('Error');
+  }
+});
+
 // --- ARTICLE ROUTES ---
 
 // 1. Get All Published Articles (lightweight – excludes content & image)
@@ -178,6 +196,43 @@ app.get('/api/articles/:id/image', async (req, res) => {
     const thumb = article.image ? await makeThumb(article.image) : '';
     res.set('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
     res.json({ image: thumb });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 1d. Serve Article Image as binary (for OG tags / social previews)
+app.get('/api/articles/:id/og-image', async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id).select('image');
+    if (!article || !article.image) return res.status(404).send('No image');
+    const match = article.image.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!match) return res.status(404).send('Invalid image');
+    const mimeType = match[1];
+    const buffer = Buffer.from(match[2], 'base64');
+    // Resize for social previews (1200x630 is ideal for OG)
+    const resized = await sharp(buffer).resize(1200, 630, { fit: 'cover' }).jpeg({ quality: 80 }).toBuffer();
+    res.set('Content-Type', 'image/jpeg');
+    res.set('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
+    res.send(resized);
+  } catch (err) {
+    res.status(500).send('Error');
+  }
+});
+
+// 1e. Get Article OG metadata (lightweight - for social link previews)
+app.get('/api/articles/:id/og', async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id).select('title subHeadline excerpt category author image');
+    if (!article) return res.status(404).json({ message: 'Not found' });
+    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
+    res.json({
+      title: article.title,
+      description: article.subHeadline || article.excerpt || '',
+      category: article.category,
+      author: article.author,
+      hasImage: !!article.image
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
