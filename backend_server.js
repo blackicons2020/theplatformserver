@@ -163,7 +163,7 @@ app.get('/api/articles/:id', async (req, res) => {
   try {
     const article = await Article.findById(req.params.id);
     if (!article) return res.status(404).json({ message: 'Article not found' });
-    res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
+    res.set('Cache-Control', 'no-cache');
     res.json(article);
   } catch (err) {
     res.status(500).json({ message: err.message });
