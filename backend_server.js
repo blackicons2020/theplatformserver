@@ -390,6 +390,31 @@ app.delete('/api/admin/ads/:id', async (req, res) => {
 
 // --- PAYMENT ROUTES ---
 
+// Initialize Paystack transaction (server-side)
+app.post('/api/payment/initialize', async (req, res) => {
+  const { email, amount } = req.body;
+  if (!email || !amount) return res.status(400).json({ message: 'Email and amount required' });
+  try {
+    const paystackRes = await fetch('https://api.paystack.co/transaction/initialize', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ email, amount: amount * 100, currency: 'NGN' })
+    });
+    const data = await paystackRes.json();
+    if (data.status && data.data?.access_code) {
+      res.json({ access_code: data.data.access_code, reference: data.data.reference });
+    } else {
+      res.status(400).json({ message: data.message || 'Failed to initialize payment' });
+    }
+  } catch (err) {
+    console.error('Payment init error:', err);
+    res.status(500).json({ message: 'Could not initialize payment. Try again.' });
+  }
+});
+
 // Verify Paystack transaction and save ad
 app.post('/api/payment/verify-ad', async (req, res) => {
   const { reference, clientName, email, plan, amount, adImage, adHeadline, adContent, adUrl, adContentFile } = req.body;
