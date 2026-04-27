@@ -126,13 +126,33 @@ app.get('/', (req, res) => {
 });
 
 // Default OG image for social previews
+// Uses only shapes (no text) so it renders correctly on Linux servers
+// where Arial/system fonts may not be installed.
 app.get('/api/og-default-image', async (req, res) => {
   try {
     const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
-      <rect width="1200" height="630" fill="#008751"/>
-      <text x="600" y="280" font-family="Arial,sans-serif" font-size="72" font-weight="bold" fill="white" text-anchor="middle">The People's Platform</text>
-      <text x="600" y="360" font-family="Arial,sans-serif" font-size="36" fill="#c0f0d0" text-anchor="middle">Reinventing news reporting without bias.</text>
-      <rect y="590" width="1200" height="40" fill="#006040"/>
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#006B3F"/>
+          <stop offset="100%" style="stop-color:#003D25"/>
+        </linearGradient>
+      </defs>
+      <!-- Background -->
+      <rect width="1200" height="630" fill="url(#bg)"/>
+      <!-- Decorative circles -->
+      <circle cx="600" cy="290" r="150" fill="none" stroke="white" stroke-width="6" opacity="0.15"/>
+      <circle cx="600" cy="290" r="110" fill="none" stroke="white" stroke-width="4" opacity="0.2"/>
+      <!-- Globe icon -->
+      <circle cx="600" cy="290" r="80" fill="none" stroke="white" stroke-width="7" opacity="0.9"/>
+      <ellipse cx="600" cy="290" rx="37" ry="80" fill="none" stroke="white" stroke-width="4" opacity="0.75"/>
+      <line x1="520" y1="290" x2="680" y2="290" stroke="white" stroke-width="4" opacity="0.75"/>
+      <line x1="520" y1="250" x2="680" y2="250" stroke="white" stroke-width="3" opacity="0.5"/>
+      <line x1="520" y1="330" x2="680" y2="330" stroke="white" stroke-width="3" opacity="0.5"/>
+      <!-- Bottom accent bar -->
+      <rect y="580" width="1200" height="50" fill="#002E1C" opacity="0.9"/>
+      <!-- Green accent dots -->
+      <circle cx="100" cy="100" r="200" fill="#00A86B" opacity="0.05"/>
+      <circle cx="1100" cy="530" r="200" fill="#00A86B" opacity="0.05"/>
     </svg>`;
     const buffer = await sharp(Buffer.from(svg)).png().toBuffer();
     res.set('Content-Type', 'image/png');
