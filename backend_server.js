@@ -222,21 +222,51 @@ app.get('/api/articles/:id/image', async (req, res) => {
 });
 
 // 1d. Serve Article Image as binary (for OG tags / social previews)
+// Optimized for social media: 1200x630px is ideal for Facebook, Twitter, LinkedIn, WhatsApp
 app.get('/api/articles/:id/og-image', async (req, res) => {
   try {
     const article = await Article.findById(req.params.id).select('image');
-    if (!article || !article.image) return res.status(404).send('No image');
+    if (!article || !article.image) {
+      // Return 404 so the og.js endpoint can fallback to default image
+      return res.status(404).send('No image');
+    }
+    
     const match = article.image.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!match) return res.status(404).send('Invalid image');
+    if (!match) {
+      return res.status(404).send('Invalid image format');
+    }
+    
     const mimeType = match[1];
     const buffer = Buffer.from(match[2], 'base64');
-    // Resize for social previews (1200x630 is ideal for OG)
-    const resized = await sharp(buffer).resize(1200, 630, { fit: 'cover' }).jpeg({ quality: 80 }).toBuffer();
+    
+    // Optimize image for social media:
+    // 1. Resize to 1200x630 (standard OG size)
+    // 2. Use cover fit to ensure full coverage
+    // 3. High quality JPEG for best appearance
+    // 4. Include metadata for proper rendering
+    const resized = await sharp(buffer)
+      .resize(1200, 630, {
+        fit: 'cover',
+        position: 'center'
+      })
+      .jpeg({
+        quality: 85,
+        progressive: true,
+        mozjpeg: true
+      })
+      .toBuffer();
+    
+    // Set headers for optimal social media crawling
     res.set('Content-Type', 'image/jpeg');
+    res.set('Content-Length', resized.length);
     res.set('Cache-Control', 'public, s-maxage=86400, stale-while-revalidate=604800');
-    res.send(resized);
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('X-Content-Type-Options', 'nosniff');
+    
+    return res.send(resized);
   } catch (err) {
-    res.status(500).send('Error');
+    console.error('OG image generation error:', err);
+    return res.status(500).send('Error generating image');
   }
 });
 
